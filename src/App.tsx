@@ -19,7 +19,7 @@ const ADMIN_TABS: Array<{ id: AdminTab; label: string; description?: string }> =
   { id: "dashboard", label: "대시보드" },
   { id: "accounts", label: "계정 관리", description: "계정 생성과 비밀번호 변경은 Edge Function 연결 후 활성화됩니다." },
   { id: "rooms", label: "룸/베드 설정" },
-  { id: "history", label: "시술 기록", description: "완료 내역과 평균 대기 시간 조회는 준비 중입니다." },
+  { id: "history", label: "시술 기록" },
   { id: "activity", label: "활동 로그" },
 ];
 

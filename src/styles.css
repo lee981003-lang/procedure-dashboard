@@ -779,32 +779,68 @@ button:focus-visible {
 
 .procedure-history {
   display: grid;
-  justify-items: center;
-  gap: 18px;
+  gap: 16px;
   padding-top: 22px;
 }
 
-.procedure-history__heading {
+.procedure-history__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.procedure-history__summary article {
   display: grid;
   gap: 6px;
-  text-align: center;
+  border: 1px solid #e1e7ef;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 12px;
 }
 
-.procedure-history__heading h1 {
-  color: #101828;
-  font-size: 22px;
-}
-
-.procedure-history__heading p {
+.procedure-history__summary span {
   color: #667085;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
-.procedure-history__selected {
-  color: #6d28d9;
-  font-size: 14px;
+.procedure-history__summary strong {
+  color: #101828;
+  font-size: 18px;
   font-weight: 800;
+}
+
+.procedure-history__tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: #f4ebff;
+  padding: 0 8px;
+  color: #6d28d9;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.month-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d8c4f1;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 8px 12px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.month-select select {
+  border: 0;
+  background: transparent;
+  color: #6d28d9;
+  font: inherit;
 }
 
 .date-range-picker {

@@ -49,7 +49,7 @@ function formatClock(startedAt: string | null) {
   return new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(started);
 }
 
-function minutesBetween(startedAt: string | null, endedAt: string | null) {
+export function minutesBetween(startedAt: string | null, endedAt: string | null) {
   if (!startedAt || !endedAt) return null;
 
   const started = new Date(startedAt).getTime();
@@ -139,6 +139,11 @@ export function isSameDay(a: Date, b: Date): boolean {
 /** 달력 날짜에 일수를 더한 새 Date를 반환한다(자정 기준). */
 export function addDays(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}
+
+/** Returns a local-midnight calendar date shifted by month count. */
+export function addMonths(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }
 
 /** a < b(날짜 단위)이면 true. */
