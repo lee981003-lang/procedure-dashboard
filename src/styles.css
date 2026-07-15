@@ -1535,3 +1535,75 @@ button:focus-visible {
 .date-range-picker__cell--start, .date-range-picker__cell--end { background: #7c3aed; border-radius: 999px; }
 .date-range-picker__confirm { background: #c5607b; color: #ffffff; }
 .activity-log__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+@media (min-width: 900px) and (max-width: 1420px) and (min-height: 600px) and (orientation: landscape) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 14px;
+  }
+
+  .side-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .floor-plan {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-auto-rows: minmax(140px, auto);
+    gap: 14px 12px;
+  }
+
+  .room-section {
+    grid-column: span var(--room-span, 1);
+    padding: 0 8px 8px;
+  }
+
+  .room-heading {
+    top: -14px;
+    min-height: 26px;
+    margin: 0 0 -8px 12px;
+    padding: 3px 9px;
+  }
+
+  .room-heading h2 {
+    font-size: 14px;
+  }
+
+  .bed-grid {
+    grid-template-columns: repeat(var(--bed-cols, 1), minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .bed-card {
+    min-height: 118px;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .bed-number {
+    font-size: 13px;
+  }
+
+  .bed-card__header strong {
+    font-size: 12px;
+  }
+
+  .bed-detail {
+    font-size: 11px;
+  }
+
+  .side-panel {
+    padding: 14px 12px 12px;
+  }
+
+  .side-panel h2 {
+    font-size: 15px;
+  }
+
+  .side-list-item {
+    min-height: 58px;
+    gap: 8px;
+    padding: 8px;
+  }
+}
