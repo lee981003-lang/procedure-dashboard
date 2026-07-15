@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-pwa
 vite-dev.*.log
 .env
 .env.local
