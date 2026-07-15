@@ -1,7 +1,15 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from "react";
+import { GripVertical, Plus, RefreshCw, Save, Store, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import type { Bed, Room } from "../types";
-import { ROOM_TAG_PALETTE } from "../roomTagPalette";
+import {
+  DEFAULT_TAG_BG,
+  DEFAULT_TAG_FG,
+  TAG_BG_PALETTE,
+  TAG_TEXT_PALETTE,
+  resolveTagColors,
+} from "../roomTagPalette";
+import { ColorSelect } from "./ColorSelect";
 import { Toast } from "./Toast";
 
 type RoomBedSettingsProps = {
@@ -13,10 +21,13 @@ type RoomBedSettingsProps = {
 
 type ToastTone = "success" | "error";
 
+const UNSET_COLOR = "__unset__";
+
 export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettingsProps) {
   const [pending, setPending] = useState<string | null>(null);
   const [roomName, setRoomName] = useState("");
   const [bedLabels, setBedLabels] = useState<Record<string, string>>({});
+  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<ToastTone>("success");
 
@@ -39,15 +50,15 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
 
   const roomDragRef = useRef<{
     dragIndex: number;
-    slot: number;
-    originX: number;
     startX: number;
+    startY: number;
     pointerId: number;
+    centers: { x: number; y: number }[];
   } | null>(null);
   const [roomDragView, setRoomDragView] = useState<{
     dragIndex: number;
-    slot: number;
     offsetX: number;
+    offsetY: number;
     overIndex: number;
   } | null>(null);
 
@@ -90,7 +101,9 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
     event.preventDefault();
     const name = String(new FormData(event.currentTarget).get("name") ?? "");
     if (hasActive(beds.filter((bed) => bed.room_id === room.id)) && !confirmActive()) return;
-    await run(`rename-room-${room.id}`, "rename_room", { p_room_id: room.id, p_name: name }, "룸 이름을 변경했습니다.");
+    if (await run(`rename-room-${room.id}`, "rename_room", { p_room_id: room.id, p_name: name }, "룸 이름을 변경했습니다.")) {
+      setEditingRoomId(null);
+    }
   };
 
   const moveRoom = async (fromIndex: number, toIndex: number) => {
@@ -102,43 +115,55 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
     await run("reorder-rooms", "reorder_rooms", { p_room_ids: nextRooms.map((room) => room.id) }, "룸 순서를 변경했습니다.");
   };
 
-  const onRoomPointerDown = (event: ReactPointerEvent<HTMLSpanElement>, roomIndex: number) => {
+  const closestRoomIndex = (centers: { x: number; y: number }[], clientX: number, clientY: number) => {
+    let closest = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    centers.forEach((center, index) => {
+      const distance = (center.x - clientX) ** 2 + (center.y - clientY) ** 2;
+      if (distance < closestDistance) {
+        closest = index;
+        closestDistance = distance;
+      }
+    });
+    return closest;
+  };
+
+  const onRoomPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, roomIndex: number) => {
     if (pending !== null) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    const grip = event.currentTarget;
-    const columnEl = grip.closest(".rbs-column") as HTMLElement | null;
-    const boardEl = grip.closest(".rbs-board") as HTMLElement | null;
-    if (!columnEl || !boardEl) return;
+    const handle = event.currentTarget;
+    const gridEl = handle.closest(".rbs-grid") as HTMLElement | null;
+    if (!gridEl) return;
 
-    const columnRect = columnEl.getBoundingClientRect();
-    const styles = window.getComputedStyle(boardEl);
-    const gap = parseFloat(styles.columnGap || styles.gap || "16") || 16;
-    const slot = columnRect.width + gap;
+    const cards = Array.from(gridEl.querySelectorAll<HTMLElement>(".rbs-room-card:not(.rbs-room-card--new)"));
+    const centers = cards.map((card) => {
+      const rect = card.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    if (centers.length === 0) return;
 
-    grip.setPointerCapture(event.pointerId);
+    handle.setPointerCapture(event.pointerId);
     roomDragRef.current = {
       dragIndex: roomIndex,
-      slot,
-      originX: columnRect.left - roomIndex * slot,
       startX: event.clientX,
+      startY: event.clientY,
       pointerId: event.pointerId,
+      centers,
     };
-    setRoomDragView({ dragIndex: roomIndex, slot, offsetX: 0, overIndex: roomIndex });
+    setRoomDragView({ dragIndex: roomIndex, offsetX: 0, offsetY: 0, overIndex: roomIndex });
     event.preventDefault();
   };
 
-  const roomOverIndex = (originX: number, slot: number, clientX: number) =>
-    Math.max(0, Math.min(rooms.length - 1, Math.floor((clientX - originX) / slot)));
-
-  const onRoomPointerMove = (event: ReactPointerEvent<HTMLSpanElement>) => {
+  const onRoomPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const state = roomDragRef.current;
     if (!state) return;
     const offsetX = event.clientX - state.startX;
-    const overIndex = roomOverIndex(state.originX, state.slot, event.clientX);
-    setRoomDragView((prev) => (prev ? { ...prev, offsetX, overIndex } : prev));
+    const offsetY = event.clientY - state.startY;
+    const overIndex = closestRoomIndex(state.centers, event.clientX, event.clientY);
+    setRoomDragView((prev) => (prev ? { ...prev, offsetX, offsetY, overIndex } : prev));
   };
 
-  const finishRoomDrag = (event: ReactPointerEvent<HTMLSpanElement>, commit: boolean) => {
+  const finishRoomDrag = (event: ReactPointerEvent<HTMLButtonElement>, commit: boolean) => {
     const state = roomDragRef.current;
     roomDragRef.current = null;
     setRoomDragView(null);
@@ -149,15 +174,27 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
       // capture already released
     }
     if (!commit) return;
-    const overIndex = roomOverIndex(state.originX, state.slot, event.clientX);
+    const overIndex = closestRoomIndex(state.centers, event.clientX, event.clientY);
     if (overIndex !== state.dragIndex) {
       void moveRoom(state.dragIndex, overIndex);
     }
   };
 
-  const setRoomColor = async (room: Room, color: string | null) => {
-    if (room.name_tag_color === color) return;
-    await run(`set-room-color-${room.id}`, "set_room_color", { p_room_id: room.id, p_color: color }, "룸 색상을 변경했습니다.");
+  const setRoomColors = async (
+    room: Room,
+    nextBg: string | null | typeof UNSET_COLOR,
+    nextFg: string | null | typeof UNSET_COLOR,
+  ) => {
+    const p_bg = nextBg === UNSET_COLOR ? room.name_tag_color : nextBg;
+    const p_fg = nextFg === UNSET_COLOR ? room.name_tag_text_color : nextFg;
+    if (room.name_tag_color === p_bg && room.name_tag_text_color === p_fg) return;
+
+    await run(
+      `set-room-colors-${room.id}`,
+      "set_room_colors",
+      { p_room_id: room.id, p_bg, p_fg },
+      "룸 색상을 변경했습니다.",
+    );
   };
 
   const deleteRoom = async (room: Room) => {
@@ -189,12 +226,12 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
     await run(`reorder-beds-${room.id}`, "reorder_beds", { p_room_id: room.id, p_bed_ids: nextBeds.map((bed) => bed.id) }, "베드 순서를 변경했습니다.");
   };
 
-  const onBedPointerDown = (event: ReactPointerEvent<HTMLSpanElement>, room: Room, roomBeds: Bed[], bed: Bed) => {
+  const onBedPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, room: Room, roomBeds: Bed[], bed: Bed) => {
     if (pending !== null) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const handle = event.currentTarget;
-    const cardEl = handle.closest(".rbs-card") as HTMLElement | null;
-    const container = handle.closest(".rbs-column__cards") as HTMLElement | null;
+    const cardEl = handle.closest(".rbs-bed-card") as HTMLElement | null;
+    const container = handle.closest(".rbs-bed-list") as HTMLElement | null;
     if (!cardEl || !container) return;
     const dragIndex = roomBeds.findIndex((item) => item.id === bed.id);
     if (dragIndex === -1) return;
@@ -222,11 +259,10 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
   const computeOverIndex = (clientY: number) => {
     const state = dragRef.current;
     if (!state) return 0;
-    const raw = Math.floor((clientY - state.containerTop) / state.slot);
-    return Math.max(0, Math.min(state.beds.length - 1, raw));
+    return computeOverIndexFrom(state, clientY);
   };
 
-  const onBedPointerMove = (event: ReactPointerEvent<HTMLSpanElement>) => {
+  const onBedPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const state = dragRef.current;
     if (!state) return;
     const offsetY = event.clientY - state.startY;
@@ -234,7 +270,7 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
     setDragView((prev) => (prev ? { ...prev, offsetY, overIndex } : prev));
   };
 
-  const finishBedDrag = (event: ReactPointerEvent<HTMLSpanElement>, room: Room, commit: boolean) => {
+  const finishBedDrag = (event: ReactPointerEvent<HTMLButtonElement>, room: Room, commit: boolean) => {
     const state = dragRef.current;
     dragRef.current = null;
     setDragView(null);
@@ -273,90 +309,121 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
       <div className="room-bed-settings__heading">
         <div>
           <h1>룸/베드 설정</h1>
-          <p>룸은 열, 베드는 카드로 표시됩니다. 열 헤더의 핸들(⠿)로 룸을, 카드의 핸들(⠿)로 베드를 끌어 순서를 바꿀 수 있습니다.</p>
         </div>
-        <button className="admin-card__button" type="button" onClick={() => void refresh()} disabled={loading || pending !== null}>새로고침</button>
+        <div className="room-bed-settings__toolbar">
+          <form className="rbs-add-room" onSubmit={(event) => void createRoom(event)}>
+            <input
+              value={roomName}
+              onChange={(event) => setRoomName(event.target.value)}
+              placeholder="새 룸 이름"
+              aria-label="새 룸 이름"
+              required
+            />
+            <button className="rbs-add-btn rbs-add-btn--primary" type="submit" disabled={pending === "create-room"}>
+              <Plus size={16} aria-hidden="true" />
+              룸 추가
+            </button>
+          </form>
+          <button className="admin-card__button" type="button" onClick={() => void refresh()} disabled={loading || pending !== null}>
+            <RefreshCw size={16} aria-hidden="true" />
+            새로고침
+          </button>
+        </div>
       </div>
 
-      <div className="rbs-board">
+      <div className="rbs-grid">
         {rooms.map((room, roomIndex) => {
           const roomBeds = beds.filter((bed) => bed.room_id === room.id);
+          const tag = resolveTagColors(room.name_tag_color, room.name_tag_text_color);
           const roomDragging = roomDragView !== null && roomIndex === roomDragView.dragIndex;
-          let roomTransform: string | undefined;
-          if (roomDragView !== null) {
-            const { dragIndex, overIndex, slot, offsetX } = roomDragView;
-            if (roomDragging) {
-              roomTransform = `translateX(${offsetX}px) scale(1.03)`;
-            } else if (dragIndex < overIndex && roomIndex > dragIndex && roomIndex <= overIndex) {
-              roomTransform = `translateX(${-slot}px)`;
-            } else if (dragIndex > overIndex && roomIndex >= overIndex && roomIndex < dragIndex) {
-              roomTransform = `translateX(${slot}px)`;
-            }
-          }
+          const roomDropTarget = roomDragView !== null && roomIndex === roomDragView.overIndex && !roomDragging;
+          const roomTransform = roomDragging
+            ? { transform: `translate(${roomDragView.offsetX}px, ${roomDragView.offsetY}px) scale(1.02)`, transition: "none" }
+            : undefined;
+
           return (
             <section
-              className={`rbs-column${roomDragging ? " rbs-column--dragging" : ""}`}
+              className={`rbs-room-card${roomDragging ? " rbs-room-card--dragging" : ""}${roomDropTarget ? " rbs-room-card--drop-target" : ""}`}
               key={room.id}
-              style={roomTransform ? { transform: roomTransform, transition: roomDragging ? "none" : undefined } : undefined}
+              style={roomTransform}
             >
-              <header className="rbs-column__header">
-                <span
-                  className="rbs-column__grip"
+              <header className="rbs-room-card__header">
+                <button
+                  className="rbs-drag-btn"
+                  type="button"
                   onPointerDown={(event) => onRoomPointerDown(event, roomIndex)}
                   onPointerMove={onRoomPointerMove}
                   onPointerUp={(event) => finishRoomDrag(event, true)}
                   onPointerCancel={(event) => finishRoomDrag(event, false)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label="드래그하여 룸 순서 변경"
-                  title="드래그하여 룸 순서 변경"
+                  disabled={pending !== null}
+                  aria-label="룸 순서 변경"
+                  title="룸 순서 변경"
                 >
-                  ⠿
-                </span>
-                <form className="rbs-column__title" onSubmit={(event) => void renameRoom(event, room)}>
-                  <input name="name" defaultValue={room.name} aria-label="룸 이름" required />
-                  <button className="rbs-icon-btn" type="submit" disabled={pending !== null} title="룸 이름 저장">저장</button>
-                </form>
-                <div className="rbs-column__actions">
-                  <button className="rbs-icon-btn rbs-icon-btn--danger" type="button" onClick={() => void deleteRoom(room)} disabled={pending !== null} title="룸 삭제" aria-label="룸 삭제">×</button>
-                </div>
+                  <GripVertical size={18} aria-hidden="true" />
+                </button>
+
+                {editingRoomId === room.id ? (
+                  <form className="rbs-room-name-form" onSubmit={(event) => void renameRoom(event, room)}>
+                    <input name="name" defaultValue={room.name} aria-label="룸 이름" required autoFocus />
+                    <button className="rbs-icon-btn" type="submit" disabled={pending !== null} title="룸 이름 저장" aria-label="룸 이름 저장">
+                      <Save size={15} aria-hidden="true" />
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className="rbs-room-name-tag"
+                    style={{ background: tag.bg, color: tag.fg }}
+                    onClick={() => setEditingRoomId(room.id)}
+                  >
+                    {room.name}
+                  </button>
+                )}
+
+                <button
+                  className="rbs-icon-btn rbs-icon-btn--danger"
+                  type="button"
+                  onClick={() => void deleteRoom(room)}
+                  disabled={pending !== null}
+                  title="룸 삭제"
+                  aria-label="룸 삭제"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
               </header>
 
-              <div className="rbs-column__colors" role="group" aria-label="이름칸 색상 선택">
-                <button
-                  type="button"
-                  className={`rbs-swatch rbs-swatch--reset${room.name_tag_color === null ? " rbs-swatch--active" : ""}`}
-                  onClick={() => void setRoomColor(room, null)}
-                  disabled={pending !== null}
-                  title="기본색"
-                  aria-label="기본색"
-                  aria-pressed={room.name_tag_color === null}
-                >
-                  ⦸
-                </button>
-                {ROOM_TAG_PALETTE.map((swatch) => {
-                  const active = (room.name_tag_color ?? "").toLowerCase() === swatch.bg;
-                  return (
-                    <button
-                      key={swatch.bg}
-                      type="button"
-                      className={`rbs-swatch${active ? " rbs-swatch--active" : ""}`}
-                      style={{ background: swatch.bg, color: swatch.fg }}
-                      onClick={() => void setRoomColor(room, swatch.bg)}
-                      disabled={pending !== null}
-                      title={swatch.label}
-                      aria-label={swatch.label}
-                      aria-pressed={active}
-                    >
-                      가
-                    </button>
-                  );
-                })}
+              <div className="rbs-color-panel">
+                <div className="rbs-color-panel__controls">
+                  <ColorSelect
+                    label="배경색"
+                    value={room.name_tag_color}
+                    options={TAG_BG_PALETTE}
+                    defaultColor={DEFAULT_TAG_BG}
+                    previewTextColor={tag.fg}
+                    disabled={pending !== null}
+                    onChange={(value) => void setRoomColors(room, value, UNSET_COLOR)}
+                  />
+                  <ColorSelect
+                    label="글자색"
+                    value={room.name_tag_text_color}
+                    options={TAG_TEXT_PALETTE}
+                    defaultColor={DEFAULT_TAG_FG}
+                    previewTextColor="#ffffff"
+                    disabled={pending !== null}
+                    onChange={(value) => void setRoomColors(room, UNSET_COLOR, value)}
+                  />
+                </div>
+                <span className="rbs-color-preview" style={{ background: tag.bg, color: tag.fg }}>
+                  미리보기
+                </span>
               </div>
 
-              <div className="rbs-column__cards">
+              <div className="rbs-bed-list">
                 {roomBeds.length === 0 ? (
-                  <p className="rbs-column__empty">베드 없음</p>
+                  <div className="rbs-empty-state">
+                    <Store size={22} aria-hidden="true" />
+                    <span>베드 없음</span>
+                  </div>
                 ) : (
                   roomBeds.map((bed, bedIndex) => {
                     const inDragColumn = dragView !== null && dragView.roomId === room.id;
@@ -365,7 +432,7 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
                     if (inDragColumn) {
                       const { dragIndex, overIndex, slot, offsetY } = dragView!;
                       if (isDragging) {
-                        transform = `translateY(${offsetY}px) scale(1.04)`;
+                        transform = `translateY(${offsetY}px) scale(1.03)`;
                       } else if (dragIndex < overIndex && bedIndex > dragIndex && bedIndex <= overIndex) {
                         transform = `translateY(${-slot}px)`;
                       } else if (dragIndex > overIndex && bedIndex >= overIndex && bedIndex < dragIndex) {
@@ -374,35 +441,46 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
                     }
                     return (
                       <div
-                        className={`rbs-card${isDragging ? " rbs-card--dragging" : ""}`}
+                        className={`rbs-bed-card${isDragging ? " rbs-bed-card--dragging" : ""}`}
                         key={bed.id}
                         style={transform ? { transform, transition: isDragging ? "none" : undefined } : undefined}
                       >
-                        <span
-                          className="rbs-card__handle"
+                        <button
+                          className="rbs-drag-btn rbs-drag-btn--muted"
+                          type="button"
                           onPointerDown={(event) => onBedPointerDown(event, room, roomBeds, bed)}
                           onPointerMove={onBedPointerMove}
                           onPointerUp={(event) => finishBedDrag(event, room, true)}
                           onPointerCancel={(event) => finishBedDrag(event, room, false)}
-                          role="button"
-                          tabIndex={0}
-                          aria-label="드래그하여 순서 변경"
-                          title="드래그하여 순서 변경"
+                          disabled={pending !== null}
+                          aria-label="베드 순서 변경"
+                          title="베드 순서 변경"
                         >
-                          ⠿
-                        </span>
-                        <form className="rbs-card__label" onSubmit={(event) => void renameBed(event, bed)}>
+                          <GripVertical size={17} aria-hidden="true" />
+                        </button>
+                        <form className="rbs-bed-card__label" onSubmit={(event) => void renameBed(event, bed)}>
                           <input name="label" defaultValue={bed.label} aria-label="베드 라벨" required />
-                          <button className="rbs-icon-btn" type="submit" disabled={pending !== null} title="라벨 저장">저장</button>
+                          <button className="rbs-icon-btn" type="submit" disabled={pending !== null} title="라벨 저장" aria-label="라벨 저장">
+                            <Save size={14} aria-hidden="true" />
+                          </button>
                         </form>
-                        <button className="rbs-icon-btn rbs-icon-btn--danger" type="button" onClick={() => void deleteBed(bed)} disabled={pending !== null} title="베드 삭제" aria-label="베드 삭제">×</button>
+                        <button
+                          className="rbs-icon-btn rbs-icon-btn--danger"
+                          type="button"
+                          onClick={() => void deleteBed(bed)}
+                          disabled={pending !== null}
+                          title="베드 삭제"
+                          aria-label="베드 삭제"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                        </button>
                       </div>
                     );
                   })
                 )}
               </div>
 
-              <form className="rbs-column__add" onSubmit={(event) => void createBed(event, room)}>
+              <form className="rbs-add-bed" onSubmit={(event) => void createBed(event, room)}>
                 <input
                   value={bedLabels[room.id] ?? ""}
                   onChange={(event) => setBedLabels((current) => ({ ...current, [room.id]: event.target.value }))}
@@ -410,20 +488,14 @@ export function RoomBedSettings({ rooms, beds, loading, refresh }: RoomBedSettin
                   aria-label="새 베드 라벨"
                   required
                 />
-                <button className="rbs-add-btn" type="submit" disabled={pending !== null}>+ 베드 추가</button>
+                <button className="rbs-add-btn" type="submit" disabled={pending !== null}>
+                  <Plus size={16} aria-hidden="true" />
+                  베드 추가
+                </button>
               </form>
             </section>
           );
         })}
-
-        <section className="rbs-column rbs-column--new">
-          <form className="rbs-column__add" onSubmit={(event) => void createRoom(event)}>
-            <input value={roomName} onChange={(event) => setRoomName(event.target.value)} placeholder="새 룸 이름" aria-label="새 룸 이름" required />
-            <button className="rbs-add-btn rbs-add-btn--primary" type="submit" disabled={pending === "create-room"}>
-              {pending === "create-room" ? "추가 중…" : "+ 룸 추가"}
-            </button>
-          </form>
-        </section>
       </div>
 
       {message ? <Toast message={message} tone={messageTone} onClose={() => setMessage(null)} /> : null}

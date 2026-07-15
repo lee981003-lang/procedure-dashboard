@@ -15,7 +15,7 @@ interface RoomSectionProps {
 
 export function RoomSection({ room, now, onSetStatus, onSetFollowUp }: RoomSectionProps) {
   const span = Math.min(room.beds.length || 1, MAX_COLS);
-  const tag = resolveTagColors(room.name_tag_color);
+  const tag = resolveTagColors(room.name_tag_color, room.name_tag_text_color);
   const layoutStyle = {
     "--room-span": String(span),
     "--bed-cols": String(span),

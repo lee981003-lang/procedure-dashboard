@@ -1,23 +1,24 @@
 import type { Bed, Room } from "../types";
 
 const roomSpecs = [
-  ["vip", "VIP실", "#f3e8ff", ["1", "2"]],
-  ["hair-removal", "제모실", "#e8f1ff", ["H1-1", "H1-2", "H2-1", "H2-2"]],
-  ["treatment", "진료실", "#fff0e8", ["P1", "P2", "P3", "P4"]],
-  ["laser", "레이저실", "#e9f9ed", ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12"]],
-  ["care", "관리실", "#fff1e6", ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]],
+  ["vip", "VIP실", "#f3e8ff", "#7c3aed", ["1", "2"]],
+  ["hair-removal", "제모실", "#e8f1ff", "#006cff", ["H1-1", "H1-2", "H2-1", "H2-2"]],
+  ["treatment", "진료실", "#fff0e8", "#f15a24", ["P1", "P2", "P3", "P4"]],
+  ["laser", "레이저실", "#e9f9ed", "#10a23c", ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12"]],
+  ["care", "관리실", "#fff1e6", "#f97316", ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]],
 ] as const;
 
 const sampleStartedAt = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 
-export const fallbackRooms: Room[] = roomSpecs.map(([id, name, nameTagColor], index) => ({
+export const fallbackRooms: Room[] = roomSpecs.map(([id, name, nameTagColor, nameTagTextColor], index) => ({
   id,
   name,
   sort_order: index + 1,
   name_tag_color: nameTagColor,
+  name_tag_text_color: nameTagTextColor,
 }));
 
-export const fallbackBeds: Bed[] = roomSpecs.flatMap(([roomId, , , labels]) =>
+export const fallbackBeds: Bed[] = roomSpecs.flatMap(([roomId, , , , labels]) =>
   labels.map((label, index) => {
     const id = `${roomId}-${label}`;
     const base = {
