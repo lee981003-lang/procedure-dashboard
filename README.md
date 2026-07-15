@@ -35,6 +35,25 @@ Supabase 대시보드에서 **Authentication → Users → 대상 사용자**를
 
 `app_metadata.role`이 `admin`이 아닌 사용자는 staff로 처리됩니다. DB를 복구하거나 새 Supabase 프로젝트를 만들었다면, 마이그레이션과 seed 적용 후 최초 관리자를 다시 지정하세요.
 
+## PWA 배포 (GitHub Pages)
+
+`main`에 반영되면 `.github/workflows/deploy-pages.yml`이 의존성 설치 → Vite 빌드 → 배포 묶음 생성 → Pages 배포까지 자동으로 수행합니다. 저장소 **Settings → Pages → Source**를 `GitHub Actions`로 설정하고, Actions secrets에 `VITE_SUPABASE_URL`·`VITE_SUPABASE_ANON_KEY`를 등록해야 합니다.
+
+배포 묶음은 `make-standalone.mjs`가 만드는 `dist-pwa/` 한 곳뿐이며, 이 스크립트가 PWA HTML의 유일한 생성 지점입니다. 산출된 HTML은 손으로 고치지 마세요.
+
+```bash
+npm run build
+node make-standalone.mjs   # 대시보드.html + dist-pwa/ 생성
+```
+
+`dist-pwa/`에는 `index.html`, `manifest.webmanifest`, `sw.js`, 아이콘 3종이 들어갑니다. 모든 PWA 경로는 상대 경로라 저장소 하위 경로(`/<repo>/`)에서도 동작합니다. 아이콘은 `pwa/icons/`에서 복사하며 현재는 임시 디자인입니다.
+
+Service Worker 캐시 이름은 `dashboard-shell-<빌드버전>`이고, 빌드 버전은 `BUILD_VERSION`(워크플로에서 커밋 SHA 주입) → `GITHUB_SHA` → `dev` 순으로 결정됩니다. 캐시 대상은 앱 셸뿐이며 Supabase API·Auth·Realtime 요청은 캐시하지 않습니다. 오프라인에서는 앱 셸만 뜨고 시술 데이터는 표시되지 않습니다.
+
+새 버전이 배포되면 화면에 "새 버전이 준비되었습니다" 안내가 뜨고, 사용자가 새로고침을 눌러야 새 버전이 적용됩니다(자동 갱신 없음).
+
+로컬에서 확인하려면 `dist-pwa/`를 정적 서버로 열어야 합니다. `file://`에서는 Service Worker가 등록되지 않습니다.
+
 ## 배포 전 환경 변수 확인
 
 - `VITE_SUPABASE_URL`이 배포 환경에 주입되었는지 확인합니다.
